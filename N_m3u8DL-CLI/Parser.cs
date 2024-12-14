@@ -105,10 +105,10 @@ namespace N_m3u8DL_CLI
             //if (!LiveStream)
             //    LOGGER.PrintLine(strings.downloadingM3u8, LOGGER.Warning);
 
-            if (M3u8Url.Contains(".cntv."))
-            {
-                M3u8Url = M3u8Url.Replace("/h5e/", "/");
-            }
+            //if (M3u8Url.Contains(".cntv."))
+            //{
+            //    M3u8Url = M3u8Url.Replace("/h5e/", "/");
+            //}
 
             if (M3u8Url.StartsWith("http"))
             {
@@ -203,6 +203,12 @@ namespace N_m3u8DL_CLI
                 }
             }
 
+            //修复#EXT-X-KEY与#EXTINF出现次序异常问题
+            if (Regex.IsMatch(m3u8Content, "(#EXTINF.*)(\\s+)(#EXT-X-KEY.*)"))
+            {
+                m3u8Content = Regex.Replace(m3u8Content, "(#EXTINF.*)(\\s+)(#EXT-X-KEY.*)", "$3$2$1");
+            }
+
             //如果BaseUrl为空则截取字符串充当
             if (BaseUrl == "")
             {
@@ -265,6 +271,7 @@ namespace N_m3u8DL_CLI
                             {
                                 expectByte = Convert.ToInt64(t[0]);
                                 segInfo.Add("expectByte", expectByte);
+                                segInfo.Add("startByte", segments.Last["startByte"].Value<long>() + segments.Last["expectByte"].Value<long>());
                             }
                             if (t.Length == 2)
                             {
@@ -320,7 +327,7 @@ namespace N_m3u8DL_CLI
                             continue;
                         }
                         //常规情况的#EXT-X-DISCONTINUITY标记，新建part
-                        if (!hasAd && segments.Count > 1)
+                        if (!hasAd && segments.Count >= 1)
                         {
                             parts.Add(segments);
                             segments = new JArray();
@@ -355,20 +362,20 @@ namespace N_m3u8DL_CLI
                     {
                         string[] tmp = line.Replace(HLSTags.extinf + ":", "").Split(',');
                         segDuration = Convert.ToDouble(tmp[0]);
-                        segInfo.Add("index", segIndex);
-                        segInfo.Add("method", m3u8CurrentKey[0]);
+                        segInfo["index"] = segIndex;
+                        segInfo["method"] = m3u8CurrentKey[0];
                         //是否有加密，有的话写入KEY和IV
                         if (m3u8CurrentKey[0] != "NONE")
                         {
-                            segInfo.Add("key", m3u8CurrentKey[1]);
+                            segInfo["key"] = m3u8CurrentKey[1];
                             //没有读取到IV，自己生成
                             if (m3u8CurrentKey[2] == "")
-                                segInfo.Add("iv", "0x" + Convert.ToString(segIndex, 16).PadLeft(32, '0'));
+                                segInfo["iv"] = "0x" + Convert.ToString(segIndex, 16).PadLeft(32, '0');
                             else
-                                segInfo.Add("iv", m3u8CurrentKey[2]);
+                                segInfo["iv"] = m3u8CurrentKey[2];
                         }
                         totalDuration += segDuration;
-                        segInfo.Add("duration", segDuration);
+                        segInfo["duration"] = segDuration;
                         expectSegment = true;
                         segIndex++;
                     }
@@ -629,12 +636,19 @@ namespace N_m3u8DL_CLI
                     Console.Write("".PadRight(13) + "Enter Number: ");
                     var input = Console.ReadLine();
                     cursorIndex += 2;
-                    for (int i = startCursorIndex; i < cursorIndex; i++)
+                    try
                     {
-                        Console.SetCursorPosition(0, i);
-                        Console.Write("".PadRight(300));
+                        for (int i = startCursorIndex; i < cursorIndex; i++)
+                        {
+                            Console.SetCursorPosition(0, i);
+                            Console.Write("".PadRight(300));
+                        }
+                        Console.SetCursorPosition(0, startCursorIndex);
                     }
-                    Console.SetCursorPosition(0, startCursorIndex);
+                    catch (Exception)
+                    {
+                        ;
+                    }
                     audioUrl = MEDIA_AUDIO_GROUP[bestUrlAudio][int.Parse(input)].Uri;
                 }
             }
@@ -659,12 +673,19 @@ namespace N_m3u8DL_CLI
                     Console.Write("".PadRight(13) + "Enter Number: ");
                     var input = Console.ReadLine();
                     cursorIndex += 2;
-                    for (int i = startCursorIndex; i < cursorIndex; i++)
+                    try
                     {
-                        Console.SetCursorPosition(0, i);
-                        Console.Write("".PadRight(300));
+                        for (int i = startCursorIndex; i < cursorIndex; i++)
+                        {
+                            Console.SetCursorPosition(0, i);
+                            Console.Write("".PadRight(300));
+                        }
+                        Console.SetCursorPosition(0, startCursorIndex);
                     }
-                    Console.SetCursorPosition(0, startCursorIndex);
+                    catch (Exception)
+                    {
+                        ;
+                    }
                     subUrl = MEDIA_SUB_GROUP[bestUrlSub][int.Parse(input)].Uri;
                 }
             }
@@ -837,6 +858,18 @@ namespace N_m3u8DL_CLI
                                 tempKey[d] = Convert.ToByte(temp.Substring(2 * d, 2), 16);
                             }
                             key[1] = Convert.ToBase64String(tempKey);
+                        }
+                        else if (key[1].Contains("elearning.cdeledu.com/hls/service/getKeyForHls"))
+                        {
+                            var keyBytes = Global.HttpDownloadFileToBytes(keyUrl, Headers);
+                            if (keyBytes.Length != 16)
+                            {
+                                key[1] = DecodeCdeledu.DecodeKey(Encoding.UTF8.GetString(keyBytes));
+                            }
+                            else
+                            {
+                                key[1] = Convert.ToBase64String(keyBytes);
+                            }
                         }
                         else if (key[1].Contains("drm.vod2.myqcloud.com/getlicense"))
                         {

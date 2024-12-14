@@ -61,7 +61,8 @@ namespace N_m3u8DL_CLI
             string m3u8Url = initJson["m3u8"].Value<string>();
             targetduration = initJson["m3u8Info"]["targetDuration"].Value<double>();
             TotalDuration = initJson["m3u8Info"]["totalDuration"].Value<double>();
-            timer.Interval = (TotalDuration - targetduration) * 1000;//设置定时器运行间隔
+            timer.Interval = Math.Abs(TotalDuration - targetduration) * 1000;//设置定时器运行间隔
+            if (timer.Interval <= 1000) timer.Interval = 10000;
             JArray lastSegments = JArray.Parse(initJson["m3u8Info"]["segments"][0].ToString().Trim());  //上次的分段，用于比对新分段
             ArrayList tempList = new ArrayList();  //所有待下载的列表
             tempList.Clear();
@@ -78,6 +79,7 @@ namespace N_m3u8DL_CLI
             }
 
             Parser parser = new Parser();
+            parser.Headers = Headers;
             parser.DownDir = Path.GetDirectoryName(jsonFile);
             parser.M3u8Url = m3u8Url;
             parser.LiveStream = true;
@@ -127,6 +129,7 @@ namespace N_m3u8DL_CLI
                     sd.Iv = info["iv"].Value<string>();
                 }
                 sd.TimeOut = (int)timer.Interval - 1000;//超时时间不超过下次执行时间
+                if (sd.TimeOut <= 0) sd.TimeOut = (int)timer.Interval;
                 sd.SegIndex = index;
                 sd.Headers = Headers;
                 sd.SegDur = info["duration"].Value<double>();

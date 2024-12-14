@@ -15,6 +15,7 @@ namespace N_m3u8DL_CLI
     //code from https://github.com/ytdl-org/youtube-dl/blob/master/youtube_dl/extractor/common.py#L2076
     class MPDParser
     {
+        private static string MPD_URL;
         static Dictionary<string, dynamic> ExtractMultisegmentInfo(XmlElement Period, XmlNamespaceManager nsMgr, Dictionary<string, dynamic> info)
         {
             var MultisegmentInfo = new Dictionary<string, dynamic>(info);
@@ -128,6 +129,7 @@ namespace N_m3u8DL_CLI
         /// <returns></returns>
         public static string Parse(string downDir, string mpdUrl, string mpdContent, string defaultBase = "")
         {
+            MPD_URL = mpdUrl;
             //XiGua
             if (mpdContent.Contains("<mas:") && !mpdContent.Contains("xmlns:mas"))
                 mpdContent = mpdContent.Replace("<MPD ", "<MPD xmlns:mas=\"urn:marlin:mas:1-0:services:schemas:mpd\" ");
@@ -152,6 +154,22 @@ namespace N_m3u8DL_CLI
             nsMgr.AddNamespace("ns", ns);
 
             TimeSpan ts = XmlConvert.ToTimeSpan(mediaPresentationDuration); //时长
+
+            //读取在MPD开头定义的<BaseURL>，并替换本身的URL
+            var baseNode = xn.SelectSingleNode("ns:BaseURL", nsMgr);
+            if (baseNode != null)
+            {
+                if (MPD_URL.Contains("kkbox.com.tw/"))
+                {
+                    var badUrl = baseNode.InnerText;
+                    var goodUrl = badUrl.Replace("//https:%2F%2F", "//");
+                    MPD_URL = mpdUrl = goodUrl;
+                }
+                else
+                {
+                    MPD_URL = mpdUrl = baseNode.InnerText;
+                }
+            }
 
             var formatList = new List<Dictionary<string, dynamic>>(); //存放所有音视频清晰度
             var periodIndex = 0; //解决同一个period且同id导致被重复添加分片
@@ -545,12 +563,19 @@ namespace N_m3u8DL_CLI
                 Console.Write("".PadRight(13) + "Enter Numbers Separated By A Space: ");
                 var input = Console.ReadLine();
                 cursorIndex += 2;
-                for (int i = startCursorIndex; i < cursorIndex; i++)
+                try
                 {
-                    Console.SetCursorPosition(0, i);
-                    Console.Write("".PadRight(300));
+                    for (int i = startCursorIndex; i < cursorIndex; i++)
+                    {
+                        Console.SetCursorPosition(0, i);
+                        Console.Write("".PadRight(300));
+                    }
+                    Console.SetCursorPosition(0, startCursorIndex);
                 }
-                Console.SetCursorPosition(0, startCursorIndex);
+                catch (Exception)
+                {
+                    ;
+                }
                 if (!string.IsNullOrEmpty(input))
                 {
                     bestVideo = new Dictionary<string, dynamic>() { ["Tbr"] = 0 };
@@ -672,6 +697,10 @@ namespace N_m3u8DL_CLI
             if (f.ContainsKey("InitializationUrl"))
             {
                 string initUrl = f["InitializationUrl"];
+                if (MPD_URL.Contains("?") && MPD_URL.Contains(".kakao.com/"))
+                {
+                    initUrl += new Regex("\\?.*").Match(MPD_URL).Value;
+                }
                 if (Regex.IsMatch(initUrl, "\\$\\$Range=(\\d+)-(\\d+)"))
                 {
                     var match = Regex.Match(initUrl, "\\$\\$Range=(\\d+)-(\\d+)");
@@ -709,6 +738,11 @@ namespace N_m3u8DL_CLI
                 var secondToLast = fragments[fragments.Count - 2];
                 var urlLast = last.ContainsKey("url") ? last["url"] : last["path"];
                 var urlSecondToLast = secondToLast.ContainsKey("url") ? secondToLast["url"] : secondToLast["path"];
+                if (MPD_URL.Contains("?") && MPD_URL.Contains(".kakao.com/"))
+                {
+                    urlLast += new Regex("\\?.*").Match(MPD_URL).Value;
+                    urlSecondToLast += new Regex("\\?.*").Match(MPD_URL).Value;
+                }
                 //普通分段才判断
                 if (urlLast.StartsWith("http") && !Regex.IsMatch(urlLast, "\\$\\$Range=(\\d+)-(\\d+)"))
                 {
@@ -725,6 +759,10 @@ namespace N_m3u8DL_CLI
             {
                 var dur = seg.ContainsKey("duration") ? seg["duration"] : 0.0;
                 var url = seg.ContainsKey("url") ? seg["url"] : seg["path"];
+                if (MPD_URL.Contains("?") && MPD_URL.Contains(".kakao.com/"))
+                {
+                    url += new Regex("\\?.*").Match(MPD_URL).Value;
+                }
                 sb.AppendLine($"#EXTINF:{dur.ToString("0.00")}");
                 if (Regex.IsMatch(url, "\\$\\$Range=(\\d+)-(\\d+)"))
                 {
